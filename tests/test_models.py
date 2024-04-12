@@ -27,7 +27,7 @@ import os
 import logging
 import unittest
 from decimal import Decimal
-from service.models import Product, Category, db
+from service.models import Product, Category, db, DataValidationError
 from service import app
 from tests.factories import ProductFactory
 
@@ -117,7 +117,6 @@ class TestProductModel(unittest.TestCase):
         self.assertEqual(found_product.description, product.description)
         self.assertEqual(found_product.price, product.price)
 
-
     def test_update_a_product(self):
         """It should Update a Product"""
         product = ProductFactory()
@@ -137,7 +136,6 @@ class TestProductModel(unittest.TestCase):
         self.assertEqual(products[0].id, original_id)
         self.assertEqual(products[0].description, "testing")
 
-
     def test_delete_a_product(self):
         """It should Delete a Product"""
         product = ProductFactory()
@@ -146,7 +144,6 @@ class TestProductModel(unittest.TestCase):
         # delete the product and make sure it isn't in the database
         product.delete()
         self.assertEqual(len(Product.all()), 0)
-
 
     def test_list_all_products(self):
         """It should List all Products in the database"""
@@ -160,7 +157,6 @@ class TestProductModel(unittest.TestCase):
         products = Product.all()
         self.assertEqual(len(products), 5)
 
-
     def test_find_by_name(self):
         """It should Find a Product by Name"""
         products = ProductFactory.create_batch(5)
@@ -172,7 +168,6 @@ class TestProductModel(unittest.TestCase):
         self.assertEqual(found.count(), count)
         for product in found:
             self.assertEqual(product.name, name)
-
 
     def test_find_by_availability(self):
         """It should Find Products by Availability"""
@@ -186,7 +181,6 @@ class TestProductModel(unittest.TestCase):
         for product in found:
             self.assertEqual(product.available, available)
 
-
     def test_find_by_category(self):
         """It should Find Products by Category"""
         products = ProductFactory.create_batch(10)
@@ -198,3 +192,47 @@ class TestProductModel(unittest.TestCase):
         self.assertEqual(found.count(), count)
         for product in found:
             self.assertEqual(product.category, category)
+
+    def test_update_without_id(self):
+        """Attempt to update a product without an ID and expect a DataValidationError."""
+        with app.app_context():
+            product = ProductFactory.build()  # Use build to prepare object without saving
+            product.id = None  # Explicitly ensuring the ID is None
+            with self.assertRaises(DataValidationError) as context:
+                product.update()
+            self.assertIn("Update called with empty ID field", str(context.exception))
+
+    def test_deserialize_invalid_boolean(self):
+        """It should raise DataValidationError if 'available' is not a boolean."""
+        with app.app_context():
+            data = {
+                "name": "Laptop",
+                "description": "A high-end gaming laptop.",
+                "price": "1200.00",
+                "available": "yes", 
+                "category": "ELECTRONICS"
+            }
+            with self.assertRaises(DataValidationError) as context:
+                Product().deserialize(data)
+            self.assertIn("Invalid type for boolean [available]", str(context.exception))
+
+    def test_deserialize_invalid_attribute(self):
+        """It should raise DataValidationError when an invalid attribute is used."""
+        with app.app_context():
+            # Setup data with an incorrect 'category' attribute that cannot be processed
+            data = {
+                "name": "Smartphone",
+                "description": "A modern mobile device.",
+                "price": True,
+                "available": True,
+                "category": 6 
+            }
+            with self.assertRaises(DataValidationError) as context:
+                Product().deserialize(data)
+            # Check if the specific error message about invalid attribute is in the exception
+            self.assertIn("Invalid attribute", str(context.exception))
+            self.assertIn("is not a valid Category", str(context.exception))
+
+
+
+
